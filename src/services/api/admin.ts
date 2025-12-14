@@ -1,4 +1,5 @@
-// Admin API Service with Mock Data
+// Admin API Service - Backend Integration
+// This service integrates with the backend APIs
 
 import type { 
   Event, 
@@ -10,411 +11,461 @@ import type {
   EventFormData,
   FilterOptions 
 } from '../../types/admin';
+import { eventServiceAPI, type EventDTO, type PageResponse } from './eventService';
+import { userServiceAPI, type ResponseDTO } from './userService';
+import { reservationServiceAPI, type ReservationDTO, type ReservationQueryParams, type EventCancelRequestDTO } from './reservationService';
+import { paymentServiceAPI, type PaymentDTO, type PaymentHistoryQueryParams } from './paymentService';
 
-// Mock Data
-const mockEvents: Event[] = [
-  {
-    id: '1',
-    name: 'Summer Music Festival 2025',
-    description: 'Join us for an amazing outdoor music festival featuring top artists from around the world.',
-    date: '2025-07-15',
-    time: '18:00',
-    location: 'Central Park, New York',
-    price: 89.99,
-    imageUrl: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=800',
-    category: 'Music',
-    availableTickets: 450,
-    totalTickets: 1000,
-    status: 'published',
-    vendorId: 'v1',
-    createdAt: '2025-01-15T10:00:00Z',
-    updatedAt: '2025-01-15T10:00:00Z',
-  },
-  {
-    id: '2',
-    name: 'Tech Conference 2025',
-    description: 'Annual technology conference with industry leaders and innovators.',
-    date: '2025-06-20',
-    time: '09:00',
-    location: 'Convention Center, San Francisco',
-    price: 299.99,
-    imageUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800',
-    category: 'Technology',
-    availableTickets: 200,
-    totalTickets: 500,
-    status: 'published',
-    vendorId: 'v2',
-    createdAt: '2025-02-01T10:00:00Z',
-    updatedAt: '2025-02-01T10:00:00Z',
-  },
-  {
-    id: '3',
-    name: 'Art Exhibition Opening',
-    description: 'Contemporary art exhibition featuring emerging artists.',
-    date: '2025-05-10',
-    time: '19:00',
-    location: 'Modern Art Museum, Chicago',
-    price: 25.00,
-    imageUrl: 'https://images.unsplash.com/photo-1531058020387-3be344556be6?w=800',
-    category: 'Art',
-    availableTickets: 150,
-    totalTickets: 200,
-    status: 'published',
-    vendorId: 'v1',
-    createdAt: '2025-01-20T10:00:00Z',
-    updatedAt: '2025-01-20T10:00:00Z',
-  },
-  {
-    id: '4',
-    name: 'Food & Wine Festival',
-    description: 'Culinary experience with renowned chefs and wine tasting.',
-    date: '2025-08-05',
-    time: '17:00',
-    location: 'Waterfront Plaza, Seattle',
-    price: 125.00,
-    imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
-    category: 'Food',
-    availableTickets: 300,
-    totalTickets: 400,
-    status: 'draft',
-    vendorId: 'v3',
-    createdAt: '2025-02-10T10:00:00Z',
-    updatedAt: '2025-02-10T10:00:00Z',
-  },
-];
+// Base URL for other services (tickets, vendors, payments, stats)
+// These endpoints need to be implemented in the backend
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
-const mockTickets: Ticket[] = [
-  {
-    id: 't1',
-    eventId: '1',
-    userId: 'u1',
-    purchaseDate: '2025-03-15T14:30:00Z',
-    status: 'confirmed',
-    quantity: 2,
-    totalPrice: 179.98,
-    bookingReference: 'BK001234',
-    paymentId: 'p1',
-  },
-  {
-    id: 't2',
-    eventId: '2',
-    userId: 'u2',
-    purchaseDate: '2025-03-16T10:20:00Z',
-    status: 'confirmed',
-    quantity: 1,
-    totalPrice: 299.99,
-    bookingReference: 'BK001235',
-    paymentId: 'p2',
-  },
-  {
-    id: 't3',
-    eventId: '3',
-    userId: 'u3',
-    purchaseDate: '2025-03-17T16:45:00Z',
-    status: 'pending',
-    quantity: 3,
-    totalPrice: 75.00,
-    bookingReference: 'BK001236',
-    paymentId: 'p3',
-  },
-];
+// Helper function to convert EventDTO to Event
+function convertEventDTOToEvent(dto: EventDTO): Event {
+  // Calculate total tickets and available tickets
+  const totalTickets = dto.vipTicketLimit + dto.premiumTicketLimit + dto.generalTicketLimit;
+  // For available tickets, we'll use total for now (backend should provide this)
+  const availableTickets = totalTickets;
+  
+  // Use general ticket price as default price
+  const price = dto.generalTicketPrice || 0;
+  
+  // Map event status
+  const statusMap: Record<string, 'draft' | 'published' | 'cancelled'> = {
+    'DRAFT': 'draft',
+    'PUBLISHED': 'published',
+    'CANCELLED': 'cancelled',
+  };
+  const status = statusMap[dto.eventStatus?.toUpperCase()] || 'draft';
 
-const mockUsers: User[] = [
-  {
-    id: 'u1',
-    name: 'John Smith',
-    email: 'john.smith@example.com',
-    phone: '+1 (555) 123-4567',
-    status: 'active',
-    role: 'user',
-    createdAt: '2024-06-15T10:00:00Z',
-    totalBookings: 5,
-    totalSpent: 450.50,
-  },
-  {
-    id: 'u2',
-    name: 'Sarah Johnson',
-    email: 'sarah.j@example.com',
-    phone: '+1 (555) 234-5678',
-    status: 'active',
-    role: 'user',
-    createdAt: '2024-08-20T10:00:00Z',
-    totalBookings: 3,
-    totalSpent: 599.97,
-  },
-  {
-    id: 'u3',
-    name: 'Michael Brown',
-    email: 'michael.b@example.com',
-    phone: '+1 (555) 345-6789',
-    status: 'active',
-    role: 'user',
-    createdAt: '2025-01-10T10:00:00Z',
-    totalBookings: 1,
-    totalSpent: 75.00,
-  },
-];
+  return {
+    id: String(dto.id),
+    name: dto.name,
+    description: dto.description,
+    date: dto.date,
+    time: dto.startTime,
+    location: dto.location,
+    price: price,
+    imageUrl: dto.imageUrl || 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=800',
+    category: dto.eventCategory || 'General',
+    availableTickets: availableTickets,
+    totalTickets: totalTickets,
+    status: status,
+    vendorId: dto.vendorId ? String(dto.vendorId) : '',
+    createdAt: dto.createdAt || new Date().toISOString(),
+    updatedAt: dto.updatedAt || new Date().toISOString(),
+  };
+}
 
-const mockVendors: Vendor[] = [
-  {
-    id: 'v1',
-    name: 'EventPro Inc.',
-    email: 'contact@eventpro.com',
-    companyName: 'EventPro Productions',
-    status: 'approved',
-    totalEvents: 15,
-    totalRevenue: 125000,
-    createdAt: '2024-01-15T10:00:00Z',
-    phone: '+1 (555) 111-2222',
-  },
-  {
-    id: 'v2',
-    name: 'Tech Events LLC',
-    email: 'info@techevents.com',
-    companyName: 'Tech Events Limited',
-    status: 'approved',
-    totalEvents: 8,
-    totalRevenue: 85000,
-    createdAt: '2024-03-20T10:00:00Z',
-    phone: '+1 (555) 222-3333',
-  },
-  {
-    id: 'v3',
-    name: 'Culinary Experiences',
-    email: 'hello@culinaryexp.com',
-    companyName: 'Culinary Experiences Co.',
-    status: 'pending',
-    totalEvents: 0,
-    totalRevenue: 0,
-    createdAt: '2025-02-01T10:00:00Z',
-    phone: '+1 (555) 333-4444',
-  },
-];
+// Helper function to convert EventFormData to EventRequest
+function convertEventFormDataToRequest(data: EventFormData): {
+  name: string;
+  slug: string;
+  description: string;
+  location: string;
+  date: string;
+  startTime: string;
+  vipTicketLimit: number;
+  premiumTicketLimit: number;
+  generalTicketLimit: number;
+  vipTicketPrice: number;
+  premiumTicketPrice: number;
+  generalTicketPrice: number;
+  eventCategory: string;
+  eventStatus: string;
+} {
+  // Generate slug from name
+  const slug = data.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 
-const mockPayments: Payment[] = [
-  {
-    id: 'p1',
-    ticketId: 't1',
-    userId: 'u1',
-    amount: 179.98,
-    status: 'completed',
-    paymentMethod: 'credit_card',
-    transactionDate: '2025-03-15T14:30:00Z',
-  },
-  {
-    id: 'p2',
-    ticketId: 't2',
-    userId: 'u2',
-    amount: 299.99,
-    status: 'completed',
-    paymentMethod: 'paypal',
-    transactionDate: '2025-03-16T10:20:00Z',
-  },
-  {
-    id: 'p3',
-    ticketId: 't3',
-    userId: 'u3',
-    amount: 75.00,
-    status: 'pending',
-    paymentMethod: 'debit_card',
-    transactionDate: '2025-03-17T16:45:00Z',
-  },
-];
+  // Map status
+  const statusMap: Record<string, string> = {
+    'draft': 'DRAFT',
+    'published': 'PUBLISHED',
+    'cancelled': 'CANCELLED',
+  };
+
+  return {
+    name: data.name,
+    slug: slug,
+    description: data.description,
+    location: data.location,
+    date: data.date,
+    startTime: data.time,
+    vipTicketLimit: 0, // These should come from form data in future
+    premiumTicketLimit: 0,
+    generalTicketLimit: data.availableTickets,
+    vipTicketPrice: 0,
+    premiumTicketPrice: 0,
+    generalTicketPrice: data.price,
+    eventCategory: data.category,
+    eventStatus: statusMap[data.status] || 'DRAFT',
+  };
+}
+
+// Helper function for authenticated requests
+async function authenticatedRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<ResponseDTO<T>> {
+  try {
+    const token = localStorage.getItem('adminToken') || sessionStorage.getItem('adminToken');
+    
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
+    };
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    const contentType = response.headers.get('content-type');
+    let data: ResponseDTO<T>;
+
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      throw new Error(text || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(data.message || data.error || `Request failed with status ${response.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        throw new Error('Network error. Please check your connection and API server.');
+      }
+      throw error;
+    }
+    throw new Error('An unexpected error occurred');
+  }
+}
 
 // API Functions
 export const adminApi = {
   // Dashboard Stats
+  // TODO: Replace with actual backend endpoint when available
   async getStats(): Promise<AdminStats> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const totalRevenue = mockPayments
-      .filter(p => p.status === 'completed')
-      .reduce((sum, p) => sum + p.amount, 0);
-    
-    const ticketsSold = mockTickets
-      .filter(t => t.status !== 'cancelled')
-      .reduce((sum, t) => sum + t.quantity, 0);
-    
-    return {
-      totalEvents: mockEvents.filter(e => e.status === 'published').length,
-      ticketsSold,
-      totalRevenue,
-      activeUsers: mockUsers.filter(u => u.status === 'active').length,
-      recentBookings: mockTickets.slice(0, 5),
-      upcomingEvents: mockEvents
-        .filter(e => e.status === 'published')
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .slice(0, 5),
-      revenueByMonth: [
-        { month: 'Jan', revenue: 12500 },
-        { month: 'Feb', revenue: 18700 },
-        { month: 'Mar', revenue: 15300 },
-        { month: 'Apr', revenue: 22100 },
-        { month: 'May', revenue: 19800 },
-        { month: 'Jun', revenue: 25400 },
-      ],
-      ticketsByStatus: [
-        { status: 'Confirmed', count: 45 },
-        { status: 'Pending', count: 12 },
-        { status: 'Used', count: 78 },
-        { status: 'Cancelled', count: 5 },
-      ],
-    };
+    try {
+      // Try to get stats from backend if endpoint exists
+      // For now, we'll aggregate from available data
+      const eventsResponse = await eventServiceAPI.getAllEvents({ page: 0, size: 100 });
+      const events = eventsResponse.data?.content || [];
+      
+      // Calculate stats from events
+      const publishedEvents = events.filter(e => e.eventStatus === 'PUBLISHED');
+      
+      // TODO: Get tickets, users, payments from backend when endpoints are available
+      // For now, return mock stats structure
+      return {
+        totalEvents: publishedEvents.length,
+        ticketsSold: 0, // TODO: Get from tickets endpoint
+        totalRevenue: 0, // TODO: Get from payments endpoint
+        activeUsers: 0, // TODO: Get from users endpoint
+        recentBookings: [], // TODO: Get from tickets endpoint
+        upcomingEvents: publishedEvents
+          .slice(0, 5)
+          .map(convertEventDTOToEvent)
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+        revenueByMonth: [
+          { month: 'Jan', revenue: 0 },
+          { month: 'Feb', revenue: 0 },
+          { month: 'Mar', revenue: 0 },
+          { month: 'Apr', revenue: 0 },
+          { month: 'May', revenue: 0 },
+          { month: 'Jun', revenue: 0 },
+        ],
+        ticketsByStatus: [
+          { status: 'Confirmed', count: 0 },
+          { status: 'Pending', count: 0 },
+          { status: 'Used', count: 0 },
+          { status: 'Cancelled', count: 0 },
+        ],
+      };
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      // Return empty stats on error
+      return {
+        totalEvents: 0,
+        ticketsSold: 0,
+        totalRevenue: 0,
+        activeUsers: 0,
+        recentBookings: [],
+        upcomingEvents: [],
+        revenueByMonth: [],
+        ticketsByStatus: [],
+      };
+    }
   },
 
-  // Events
+  // Events - Using Event Service API
   async getEvents(filters?: FilterOptions): Promise<Event[]> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    let filtered = [...mockEvents];
-    
-    if (filters?.status) {
-      filtered = filtered.filter(e => e.status === filters.status);
+    try {
+      const params = {
+        page: filters?.page || 0,
+        size: filters?.limit || 20,
+        sortBy: 'date',
+        direction: 'DESC' as const,
+        ...(filters?.category && { category: filters.category }),
+        ...(filters?.search && { text: filters.search }),
+        ...(filters?.dateFrom && { start: filters.dateFrom }),
+        ...(filters?.dateTo && { end: filters.dateTo }),
+      };
+
+      let response: ResponseDTO<PageResponse<EventDTO>>;
+      
+      if (filters?.search || filters?.dateFrom || filters?.dateTo) {
+        // Use advanced search if filters are provided
+        response = await eventServiceAPI.advancedSearchEvents(params);
+      } else {
+        // Use regular get all
+        response = await eventServiceAPI.getAllEvents(params);
+      }
+
+      let events = response.data?.content || [];
+
+      // Apply status filter if provided
+      if (filters?.status) {
+        const statusMap: Record<string, string> = {
+          'draft': 'DRAFT',
+          'published': 'PUBLISHED',
+          'cancelled': 'CANCELLED',
+        };
+        const backendStatus = statusMap[filters.status];
+        if (backendStatus) {
+          events = events.filter(e => e.eventStatus === backendStatus);
+        }
+      }
+
+      return events.map(convertEventDTOToEvent);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      throw error;
     }
-    if (filters?.category) {
-      filtered = filtered.filter(e => e.category === filters.category);
-    }
-    if (filters?.search) {
-      const search = filters.search.toLowerCase();
-      filtered = filtered.filter(e => 
-        e.name.toLowerCase().includes(search) ||
-        e.description.toLowerCase().includes(search)
-      );
-    }
-    
-    return filtered;
   },
 
   async getEvent(id: string): Promise<Event | null> {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return mockEvents.find(e => e.id === id) || null;
+    try {
+      const eventId = parseInt(id, 10);
+      if (isNaN(eventId)) {
+        throw new Error('Invalid event ID');
+      }
+      const response = await eventServiceAPI.getEventById(eventId);
+      if (response.data) {
+        return convertEventDTOToEvent(response.data);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching event:', error);
+      return null;
+    }
   },
 
   async createEvent(data: EventFormData): Promise<Event> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const newEvent: Event = {
-      id: `e${Date.now()}`,
-      ...data,
-      totalTickets: data.availableTickets,
-      vendorId: 'v1',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    mockEvents.push(newEvent);
-    return newEvent;
+    try {
+      const requestData = convertEventFormDataToRequest(data);
+      const response = await eventServiceAPI.createEvent(requestData);
+      if (!response.data) {
+        throw new Error('Failed to create event');
+      }
+      return convertEventDTOToEvent(response.data);
+    } catch (error) {
+      console.error('Error creating event:', error);
+      throw error;
+    }
   },
 
   async updateEvent(id: string, data: Partial<EventFormData>): Promise<Event> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const index = mockEvents.findIndex(e => e.id === id);
-    if (index === -1) throw new Error('Event not found');
-    
-    mockEvents[index] = {
-      ...mockEvents[index],
-      ...data,
-      updatedAt: new Date().toISOString(),
-    };
-    return mockEvents[index];
+    try {
+      const eventId = parseInt(id, 10);
+      if (isNaN(eventId)) {
+        throw new Error('Invalid event ID');
+      }
+
+      // Get existing event first to merge data
+      const existingEvent = await this.getEvent(id);
+      if (!existingEvent) {
+        throw new Error('Event not found');
+      }
+
+      // Merge with existing data
+      const mergedData: EventFormData = {
+        name: data.name ?? existingEvent.name,
+        description: data.description ?? existingEvent.description,
+        date: data.date ?? existingEvent.date,
+        time: data.time ?? existingEvent.time,
+        location: data.location ?? existingEvent.location,
+        price: data.price ?? existingEvent.price,
+        imageUrl: data.imageUrl ?? existingEvent.imageUrl,
+        category: data.category ?? existingEvent.category,
+        availableTickets: data.availableTickets ?? existingEvent.availableTickets,
+        status: data.status ?? existingEvent.status,
+      };
+
+      const requestData = convertEventFormDataToRequest(mergedData);
+      const response = await eventServiceAPI.updateEvent(eventId, requestData);
+      if (!response.data) {
+        throw new Error('Failed to update event');
+      }
+      return convertEventDTOToEvent(response.data);
+    } catch (error) {
+      console.error('Error updating event:', error);
+      throw error;
+    }
   },
 
   async deleteEvent(id: string): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const index = mockEvents.findIndex(e => e.id === id);
-    if (index !== -1) {
-      mockEvents.splice(index, 1);
-    }
+    // TODO: Implement delete endpoint in backend
+    // For now, we'll throw an error
+    throw new Error('Delete event endpoint not yet implemented in backend');
   },
 
   // Tickets
+  // TODO: Replace with actual backend endpoint when available
   async getTickets(filters?: FilterOptions): Promise<Ticket[]> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    let filtered = [...mockTickets];
-    
-    if (filters?.status) {
-      filtered = filtered.filter(t => t.status === filters.status);
+    try {
+      // TODO: Replace with actual tickets endpoint
+      // const response = await authenticatedRequest<Ticket[]>('/api/v1/admin/tickets', {
+      //   method: 'GET',
+      // });
+      // return response.data || [];
+      
+      // Placeholder - return empty array until backend endpoint is available
+      console.warn('Tickets endpoint not yet implemented in backend');
+      return [];
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+      return [];
     }
-    
-    return filtered;
   },
 
   async updateTicketStatus(id: string, status: Ticket['status']): Promise<Ticket> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const ticket = mockTickets.find(t => t.id === id);
-    if (!ticket) throw new Error('Ticket not found');
-    
-    ticket.status = status;
-    return ticket;
+    // TODO: Implement ticket status update endpoint
+    throw new Error('Update ticket status endpoint not yet implemented in backend');
   },
 
   // Users
+  // TODO: Replace with actual backend endpoint when available
   async getUsers(filters?: FilterOptions): Promise<User[]> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    let filtered = [...mockUsers];
-    
-    if (filters?.status) {
-      filtered = filtered.filter(u => u.status === filters.status);
+    try {
+      // TODO: Replace with actual users endpoint
+      // const response = await authenticatedRequest<User[]>('/api/v1/admin/users', {
+      //   method: 'GET',
+      // });
+      // return response.data || [];
+      
+      console.warn('Users endpoint not yet implemented in backend');
+      return [];
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return [];
     }
-    if (filters?.search) {
-      const search = filters.search.toLowerCase();
-      filtered = filtered.filter(u => 
-        u.name.toLowerCase().includes(search) ||
-        u.email.toLowerCase().includes(search)
-      );
-    }
-    
-    return filtered;
   },
 
   async updateUserStatus(id: string, status: User['status']): Promise<User> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const user = mockUsers.find(u => u.id === id);
-    if (!user) throw new Error('User not found');
-    
-    user.status = status;
-    return user;
+    // TODO: Implement user status update endpoint
+    throw new Error('Update user status endpoint not yet implemented in backend');
   },
 
   // Vendors
+  // TODO: Replace with actual backend endpoint when available
   async getVendors(filters?: FilterOptions): Promise<Vendor[]> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    let filtered = [...mockVendors];
-    
-    if (filters?.status) {
-      filtered = filtered.filter(v => v.status === filters.status);
+    try {
+      // TODO: Replace with actual vendors endpoint
+      // const response = await authenticatedRequest<Vendor[]>('/api/v1/admin/vendors', {
+      //   method: 'GET',
+      // });
+      // return response.data || [];
+      
+      console.warn('Vendors endpoint not yet implemented in backend');
+      return [];
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+      return [];
     }
-    
-    return filtered;
   },
 
   async updateVendorStatus(id: string, status: Vendor['status']): Promise<Vendor> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const vendor = mockVendors.find(v => v.id === id);
-    if (!vendor) throw new Error('Vendor not found');
-    
-    vendor.status = status;
-    return vendor;
+    // TODO: Implement vendor status update endpoint
+    throw new Error('Update vendor status endpoint not yet implemented in backend');
   },
 
   // Payments
+  // TODO: Replace with actual backend endpoint when available
   async getPayments(filters?: FilterOptions): Promise<Payment[]> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    let filtered = [...mockPayments];
-    
-    if (filters?.status) {
-      filtered = filtered.filter(p => p.status === filters.status);
+    try {
+      // TODO: Replace with actual payments endpoint
+      // const response = await authenticatedRequest<Payment[]>('/api/v1/admin/payments', {
+      //   method: 'GET',
+      // });
+      // return response.data || [];
+      
+      console.warn('Payments endpoint not yet implemented in backend');
+      return [];
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      return [];
     }
-    
-    return filtered;
   },
 
   async refundPayment(id: string, amount: number): Promise<Payment> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const payment = mockPayments.find(p => p.id === id);
-    if (!payment) throw new Error('Payment not found');
-    
-    payment.status = 'refunded';
-    payment.refundAmount = amount;
-    payment.refundDate = new Date().toISOString();
-    
-    return payment;
+    // TODO: Implement refund endpoint
+    throw new Error('Refund payment endpoint not yet implemented in backend');
+  },
+
+  // Reservations (Admin endpoints)
+  /**
+   * Get Refund Available Reservations
+   * GET /api/v1/reservation/refund-available
+   * Authorization: Requires ADMIN role
+   */
+  async getRefundAvailableReservations(params?: ReservationQueryParams): Promise<ReservationDTO[]> {
+    try {
+      const response = await reservationServiceAPI.getRefundAvailableReservations(params);
+      return response.data?.content || [];
+    } catch (error) {
+      console.error('Error fetching refund available reservations:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Cancel Event
+   * POST /api/v1/reservation/event-cancel
+   * Authorization: Requires ADMIN role
+   */
+  async cancelEvent(data: EventCancelRequestDTO): Promise<string> {
+    try {
+      const response = await reservationServiceAPI.cancelEvent(data);
+      return response.message || 'Event cancelled successfully';
+    } catch (error) {
+      console.error('Error cancelling event:', error);
+      throw error;
+    }
+  },
+
+  // Payment History (can be used by admin to view user payments)
+  /**
+   * Get Payment History
+   * GET /api/v1/payment/payment-history
+   * Authorization: Requires USER role (but can be used by admin if logged in as user)
+   */
+  async getPaymentHistory(params?: PaymentHistoryQueryParams): Promise<PaymentDTO[]> {
+    try {
+      const response = await paymentServiceAPI.getPaymentHistory(params);
+      return response.data?.content || [];
+    } catch (error) {
+      console.error('Error fetching payment history:', error);
+      throw error;
+    }
   },
 };

@@ -144,6 +144,54 @@ class UserServiceAPI {
     });
   }
 
+  async verifyAccount(email: string, otp: string): Promise<ResponseDTO> {
+    return this.request('/api/v1/auth/verify-account', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp }),
+    });
+  }
+
+  async resendVerify(email: string): Promise<ResponseDTO> {
+    return this.request('/api/v1/auth/resend-verify', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async forgotPassword(email: string): Promise<ResponseDTO> {
+    return this.request('/api/v1/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async resetPassword(email: string, password: string, otp: string): Promise<ResponseDTO> {
+    return this.request('/api/v1/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, otp }),
+    });
+  }
+
+  async vendorLogin(email: string, password: string): Promise<ResponseDTO<LoginResponse>> {
+    return this.request<LoginResponse>('/api/v1/auth/vendor/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  async vendorRegister(data: {
+    name: string;
+    password: string;
+    email: string;
+    phone: string;
+    website: string;
+  }): Promise<ResponseDTO> {
+    return this.request('/api/v1/auth/vendor/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async healthCheck(): Promise<string> {
     const response = await fetch(`${this.baseURL}/api/v1/user/health`);
     return response.text();
