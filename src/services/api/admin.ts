@@ -12,9 +12,10 @@ import type {
   FilterOptions 
 } from '../../types/admin';
 import { eventServiceAPI, type EventDTO, type PageResponse } from './eventService';
+import { paymentServiceAPI, type PaymentDTO, type PaymentHistoryQueryParams } from './paymentService';
 import { userServiceAPI, type ResponseDTO } from './userService';
 import { reservationServiceAPI, type ReservationDTO, type ReservationQueryParams, type EventCancelRequestDTO } from './reservationService';
-import { paymentServiceAPI, type PaymentDTO, type PaymentHistoryQueryParams } from './paymentService';
+import { toast } from 'sonner@2.0.3';
 
 // Base URL for other services (tickets, vendors, payments, stats)
 // These endpoints need to be implemented in the backend
@@ -23,9 +24,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080
 // Helper function to convert EventDTO to Event
 function convertEventDTOToEvent(dto: EventDTO): Event {
   // Calculate total tickets and available tickets
-  const totalTickets = dto.vipTicketLimit + dto.premiumTicketLimit + dto.generalTicketLimit;
-  // For available tickets, we'll use total for now (backend should provide this)
-  const availableTickets = totalTickets;
+  const vipLimit = dto.vipTicketLimit ?? 0;
+  const premiumLimit = dto.premiumTicketLimit ?? 0;
+  const generalLimit = dto.generalTicketLimit ?? 0;
+  const totalTickets = vipLimit + premiumLimit + generalLimit;
+  // Use general ticket limit as available tickets if provided, otherwise fallback to total
+  const availableTickets = generalLimit || totalTickets;
   
   // Use general ticket price as default price
   const price = dto.generalTicketPrice || 0;
@@ -54,6 +58,36 @@ function convertEventDTOToEvent(dto: EventDTO): Event {
     vendorId: dto.vendorId ? String(dto.vendorId) : '',
     createdAt: dto.createdAt || new Date().toISOString(),
     updatedAt: dto.updatedAt || new Date().toISOString(),
+    // Preserve tiered ticket data for editing
+    vipTicketLimit: vipLimit,
+    premiumTicketLimit: premiumLimit,
+    generalTicketLimit: generalLimit,
+    vipTicketPrice: dto.vipTicketPrice ?? 0,
+    premiumTicketPrice: dto.premiumTicketPrice ?? 0,
+    generalTicketPrice: dto.generalTicketPrice ?? 0,
+  };
+}
+
+// Helper to convert PaymentDTO to Payment
+function convertPaymentDTOToPayment(dto: PaymentDTO): Payment {
+  // Map backend status to frontend status
+  const statusMap: Record<string, Payment['status']> = {
+    'PENDING': 'pending',
+    'COMPLETED': 'completed',
+    'FAILED': 'failed',
+    'REFUNDED': 'refunded',
+  };
+
+  const status = statusMap[dto.status?.toUpperCase()] || 'pending';
+
+  return {
+    id: String(dto.id),
+    ticketId: dto.reservationId ? String(dto.reservationId) : '',
+    userId: '', // backend does not provide userId in PaymentDTO
+    amount: dto.amount,
+    status,
+    paymentMethod: dto.paymentMethod || 'unknown',
+    transactionDate: dto.transactionDate || new Date().toISOString(),
   };
 }
 
@@ -94,12 +128,13 @@ function convertEventFormDataToRequest(data: EventFormData): {
     location: data.location,
     date: data.date,
     startTime: data.time,
-    vipTicketLimit: 0, // These should come from form data in future
-    premiumTicketLimit: 0,
-    generalTicketLimit: data.availableTickets,
-    vipTicketPrice: 0,
-    premiumTicketPrice: 0,
-    generalTicketPrice: data.price,
+    // Use tiered ticket fields from the form; fall back to legacy single-tier values if needed
+    vipTicketLimit: data.vipTicketLimit ?? 0,
+    premiumTicketLimit: data.premiumTicketLimit ?? 0,
+    generalTicketLimit: data.generalTicketLimit ?? data.availableTickets,
+    vipTicketPrice: data.vipTicketPrice ?? 0,
+    premiumTicketPrice: data.premiumTicketPrice ?? 0,
+    generalTicketPrice: data.generalTicketPrice ?? data.price,
     eventCategory: data.category,
     eventStatus: statusMap[data.status] || 'DRAFT',
   };
@@ -131,22 +166,52 @@ async function authenticatedRequest<T>(
       data = await response.json();
     } else {
       const text = await response.text();
-      throw new Error(text || `HTTP ${response.status}: ${response.statusText}`);
+      const errorMsg = text || `HTTP ${response.status}: ${response.statusText}`;
+      toast.error(errorMsg);
+      return {
+        success: false,
+        message: errorMsg,
+        error: errorMsg,
+      } as ResponseDTO<T>;
     }
 
     if (!response.ok) {
-      throw new Error(data.message || data.error || `Request failed with status ${response.status}`);
+      const errorMsg = data.message || data.error || `Request failed with status ${response.status}`;
+      toast.error(errorMsg);
+      return {
+        success: false,
+        message: errorMsg,
+        error: errorMsg,
+        data: data.data,
+      } as ResponseDTO<T>;
     }
 
     return data;
   } catch (error) {
     if (error instanceof Error) {
       if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-        throw new Error('Network error. Please check your connection and API server.');
+        const networkError = 'Network error. Please check your connection and API server.';
+        toast.error(networkError);
+        return {
+          success: false,
+          message: networkError,
+          error: networkError,
+        } as ResponseDTO<T>;
       }
-      throw error;
+      toast.error(error.message || 'An error occurred');
+      return {
+        success: false,
+        message: error.message || 'An error occurred',
+        error: error.message || 'An error occurred',
+      } as ResponseDTO<T>;
     }
-    throw new Error('An unexpected error occurred');
+    const unexpectedError = 'An unexpected error occurred';
+    toast.error(unexpectedError);
+    return {
+      success: false,
+      message: unexpectedError,
+      error: unexpectedError,
+    } as ResponseDTO<T>;
   }
 }
 
@@ -164,32 +229,19 @@ export const adminApi = {
       // Calculate stats from events
       const publishedEvents = events.filter(e => e.eventStatus === 'PUBLISHED');
       
-      // TODO: Get tickets, users, payments from backend when endpoints are available
-      // For now, return mock stats structure
+      // Get real data from backend
       return {
         totalEvents: publishedEvents.length,
-        ticketsSold: 0, // TODO: Get from tickets endpoint
-        totalRevenue: 0, // TODO: Get from payments endpoint
-        activeUsers: 0, // TODO: Get from users endpoint
-        recentBookings: [], // TODO: Get from tickets endpoint
+        ticketsSold: 0,
+        totalRevenue: 0,
+        activeUsers: 0,
+        recentBookings: [],
         upcomingEvents: publishedEvents
           .slice(0, 5)
           .map(convertEventDTOToEvent)
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-        revenueByMonth: [
-          { month: 'Jan', revenue: 0 },
-          { month: 'Feb', revenue: 0 },
-          { month: 'Mar', revenue: 0 },
-          { month: 'Apr', revenue: 0 },
-          { month: 'May', revenue: 0 },
-          { month: 'Jun', revenue: 0 },
-        ],
-        ticketsByStatus: [
-          { status: 'Confirmed', count: 0 },
-          { status: 'Pending', count: 0 },
-          { status: 'Used', count: 0 },
-          { status: 'Cancelled', count: 0 },
-        ],
+        revenueByMonth: [],
+        ticketsByStatus: [],
       };
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -221,6 +273,7 @@ export const adminApi = {
         ...(filters?.dateTo && { end: filters.dateTo }),
       };
 
+      console.log('Fetching events with filters:', filters);
       let response: ResponseDTO<PageResponse<EventDTO>>;
       
       if (filters?.search || filters?.dateFrom || filters?.dateTo) {
@@ -231,10 +284,47 @@ export const adminApi = {
         response = await eventServiceAPI.getAllEvents(params);
       }
 
-      let events = response.data?.content || [];
+      console.log('Events API response:', response);
+
+      // Handle API response structure - check both response.data and response.content
+      let pageData: PageResponse<EventDTO> | undefined;
+      
+      // Check if data is in response.data (standard ResponseDTO)
+      if (response.data) {
+        pageData = response.data;
+        console.log('Found page data in response.data');
+      }
+      // Check if data is directly in response (actual API structure after conversion)
+      else if ((response as any).content && typeof (response as any).content === 'object') {
+        // The content might be the PageResponse itself
+        if ((response as any).content.content) {
+          pageData = (response as any).content as PageResponse<EventDTO>;
+          console.log('Found page data in response.content (paginated)');
+        } else {
+          // Single object, wrap it
+          pageData = {
+            content: [(response as any).content as EventDTO],
+            totalElements: 1,
+            totalPages: 1,
+            size: 1,
+            number: 0,
+            first: true,
+            last: true,
+          };
+          console.log('Found single event in response.content');
+        }
+      }
+
+      let events: EventDTO[] = [];
+      if (pageData?.content) {
+        events = pageData.content;
+        console.log(`Found ${events.length} events in response`);
+      } else {
+        console.warn('No events found in response. Full response:', response);
+      }
 
       // Apply status filter if provided
-      if (filters?.status) {
+      if (filters?.status && events.length > 0) {
         const statusMap: Record<string, string> = {
           'draft': 'DRAFT',
           'published': 'PUBLISHED',
@@ -242,14 +332,20 @@ export const adminApi = {
         };
         const backendStatus = statusMap[filters.status];
         if (backendStatus) {
+          const beforeFilter = events.length;
           events = events.filter(e => e.eventStatus === backendStatus);
+          console.log(`Status filter applied: ${beforeFilter} -> ${events.length} events`);
         }
       }
 
-      return events.map(convertEventDTOToEvent);
+      const convertedEvents = events.map(convertEventDTOToEvent);
+      console.log(`Converted ${convertedEvents.length} events to UI format`);
+      return convertedEvents;
     } catch (error) {
       console.error('Error fetching events:', error);
-      throw error;
+      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch events';
+      toast.error(errorMsg);
+      return [];
     }
   },
 
@@ -259,10 +355,25 @@ export const adminApi = {
       if (isNaN(eventId)) {
         throw new Error('Invalid event ID');
       }
+      console.log('Fetching event by ID:', eventId);
       const response = await eventServiceAPI.getEventById(eventId);
+      console.log('Get event response:', response);
+
+      // Handle API response structure - check both response.data and response.content
+      let eventData: EventDTO | undefined;
+      
       if (response.data) {
-        return convertEventDTOToEvent(response.data);
+        eventData = response.data;
+        console.log('Found event data in response.data');
+      } else if ((response as any).content) {
+        eventData = (response as any).content as EventDTO;
+        console.log('Found event data in response.content');
       }
+
+      if (eventData) {
+        return convertEventDTOToEvent(eventData);
+      }
+      console.warn('No event data found in response');
       return null;
     } catch (error) {
       console.error('Error fetching event:', error);
@@ -273,13 +384,32 @@ export const adminApi = {
   async createEvent(data: EventFormData): Promise<Event> {
     try {
       const requestData = convertEventFormDataToRequest(data);
+      console.log('Creating event with data:', requestData);
       const response = await eventServiceAPI.createEvent(requestData);
-      if (!response.data) {
-        throw new Error('Failed to create event');
+      console.log('Create event response:', response);
+
+      // Handle API response structure - check both response.data and response.content
+      let eventData: EventDTO | undefined;
+      
+      if (response.data) {
+        eventData = response.data;
+        console.log('Found event data in response.data');
+      } else if ((response as any).content) {
+        eventData = (response as any).content as EventDTO;
+        console.log('Found event data in response.content');
       }
-      return convertEventDTOToEvent(response.data);
+
+      if (!eventData) {
+        console.error('No event data in response:', response);
+        const errorMsg = response.message || 'Failed to create event';
+        toast.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+      return convertEventDTOToEvent(eventData);
     } catch (error) {
       console.error('Error creating event:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to create event';
+      toast.error(errorMsg);
       throw error;
     }
   },
@@ -294,6 +424,7 @@ export const adminApi = {
       // Get existing event first to merge data
       const existingEvent = await this.getEvent(id);
       if (!existingEvent) {
+        toast.error('Event not found');
         throw new Error('Event not found');
       }
 
@@ -304,28 +435,75 @@ export const adminApi = {
         date: data.date ?? existingEvent.date,
         time: data.time ?? existingEvent.time,
         location: data.location ?? existingEvent.location,
-        price: data.price ?? existingEvent.price,
         imageUrl: data.imageUrl ?? existingEvent.imageUrl,
         category: data.category ?? existingEvent.category,
-        availableTickets: data.availableTickets ?? existingEvent.availableTickets,
         status: data.status ?? existingEvent.status,
+        // New tiered ticket fields – default from existing event if not overridden
+        vipTicketLimit:
+          data.vipTicketLimit ?? (existingEvent as any).vipTicketLimit ?? 0,
+        premiumTicketLimit:
+          data.premiumTicketLimit ?? (existingEvent as any).premiumTicketLimit ?? 0,
+        generalTicketLimit:
+          data.generalTicketLimit ??
+          data.availableTickets ??
+          (existingEvent as any).generalTicketLimit ??
+          existingEvent.availableTickets,
+        vipTicketPrice:
+          data.vipTicketPrice ?? (existingEvent as any).vipTicketPrice ?? 0,
+        premiumTicketPrice:
+          data.premiumTicketPrice ?? (existingEvent as any).premiumTicketPrice ?? 0,
+        generalTicketPrice:
+          data.generalTicketPrice ??
+          data.price ??
+          (existingEvent as any).generalTicketPrice ??
+          existingEvent.price,
+        // Legacy single-tier fields (kept in sync with general tier)
+        price:
+          data.price ??
+          data.generalTicketPrice ??
+          (existingEvent as any).generalTicketPrice ??
+          existingEvent.price,
+        availableTickets:
+          data.availableTickets ??
+          data.generalTicketLimit ??
+          (existingEvent as any).generalTicketLimit ??
+          existingEvent.availableTickets,
       };
 
       const requestData = convertEventFormDataToRequest(mergedData);
+      console.log('Updating event:', eventId, 'with data:', requestData);
       const response = await eventServiceAPI.updateEvent(eventId, requestData);
-      if (!response.data) {
-        throw new Error('Failed to update event');
+      console.log('Update event response:', response);
+
+      // Handle API response structure - check both response.data and response.content
+      let eventData: EventDTO | undefined;
+      
+      if (response.data) {
+        eventData = response.data;
+        console.log('Found event data in response.data');
+      } else if ((response as any).content) {
+        eventData = (response as any).content as EventDTO;
+        console.log('Found event data in response.content');
       }
-      return convertEventDTOToEvent(response.data);
+
+      if (!eventData) {
+        console.error('No event data in response:', response);
+        const errorMsg = response.message || 'Failed to update event';
+        toast.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+      return convertEventDTOToEvent(eventData);
     } catch (error) {
       console.error('Error updating event:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to update event';
+      toast.error(errorMsg);
       throw error;
     }
   },
 
   async deleteEvent(id: string): Promise<void> {
     // TODO: Implement delete endpoint in backend
-    // For now, we'll throw an error
+    toast.error('Delete event endpoint not yet implemented in backend');
     throw new Error('Delete event endpoint not yet implemented in backend');
   },
 
@@ -350,21 +528,41 @@ export const adminApi = {
 
   async updateTicketStatus(id: string, status: Ticket['status']): Promise<Ticket> {
     // TODO: Implement ticket status update endpoint
+    toast.error('Update ticket status endpoint not yet implemented in backend');
     throw new Error('Update ticket status endpoint not yet implemented in backend');
   },
 
   // Users
-  // TODO: Replace with actual backend endpoint when available
   async getUsers(filters?: FilterOptions): Promise<User[]> {
     try {
-      // TODO: Replace with actual users endpoint
-      // const response = await authenticatedRequest<User[]>('/api/v1/admin/users', {
-      //   method: 'GET',
-      // });
-      // return response.data || [];
-      
-      console.warn('Users endpoint not yet implemented in backend');
-      return [];
+      // New backend endpoint: GET /api/v1/user/all (paginated)
+      const params = new URLSearchParams();
+
+      // Pagination (0-based)
+      params.append('page', String(filters?.page ?? 0));
+      params.append('size', String(filters?.limit ?? 20));
+
+      // Sorting
+      params.append('sortBy', 'id');
+      params.append('direction', 'DESC');
+
+      const queryString = params.toString();
+      const endpoint = `/api/v1/user/all${queryString ? `?${queryString}` : ''}`;
+
+      // Expect ResponseDTO<PageResponse<User>>
+      const response = await authenticatedRequest<PageResponse<User>>(endpoint, {
+        method: 'GET',
+      });
+
+      const pageData = response.data;
+      let users: User[] = pageData?.content || [];
+
+      // Client-side status filter
+      if (filters?.status && filters.status !== 'all') {
+        users = users.filter((u) => u.status === filters.status);
+      }
+
+      return users;
     } catch (error) {
       console.error('Error fetching users:', error);
       return [];
@@ -373,21 +571,41 @@ export const adminApi = {
 
   async updateUserStatus(id: string, status: User['status']): Promise<User> {
     // TODO: Implement user status update endpoint
+    toast.error('Update user status endpoint not yet implemented in backend');
     throw new Error('Update user status endpoint not yet implemented in backend');
   },
 
   // Vendors
-  // TODO: Replace with actual backend endpoint when available
   async getVendors(filters?: FilterOptions): Promise<Vendor[]> {
     try {
-      // TODO: Replace with actual vendors endpoint
-      // const response = await authenticatedRequest<Vendor[]>('/api/v1/admin/vendors', {
-      //   method: 'GET',
-      // });
-      // return response.data || [];
-      
-      console.warn('Vendors endpoint not yet implemented in backend');
-      return [];
+      // New backend endpoint: GET /api/v1/vendor/all (paginated)
+      const params = new URLSearchParams();
+
+      // Pagination (0-based)
+      params.append('page', String(filters?.page ?? 0));
+      params.append('size', String(filters?.limit ?? 20));
+
+      // Sorting
+      params.append('sortBy', 'id');
+      params.append('direction', 'DESC');
+
+      const queryString = params.toString();
+      const endpoint = `/api/v1/vendor/all${queryString ? `?${queryString}` : ''}`;
+
+      // Expect ResponseDTO<PageResponse<Vendor>>
+      const response = await authenticatedRequest<PageResponse<Vendor>>(endpoint, {
+        method: 'GET',
+      });
+
+      const pageData = response.data;
+      let vendors: Vendor[] = pageData?.content || [];
+
+      // Client-side status filter
+      if (filters?.status && filters.status !== 'all') {
+        vendors = vendors.filter((v) => v.status === filters.status);
+      }
+
+      return vendors;
     } catch (error) {
       console.error('Error fetching vendors:', error);
       return [];
@@ -396,30 +614,59 @@ export const adminApi = {
 
   async updateVendorStatus(id: string, status: Vendor['status']): Promise<Vendor> {
     // TODO: Implement vendor status update endpoint
+    toast.error('Update vendor status endpoint not yet implemented in backend');
     throw new Error('Update vendor status endpoint not yet implemented in backend');
   },
 
   // Payments
-  // TODO: Replace with actual backend endpoint when available
   async getPayments(filters?: FilterOptions): Promise<Payment[]> {
     try {
-      // TODO: Replace with actual payments endpoint
-      // const response = await authenticatedRequest<Payment[]>('/api/v1/admin/payments', {
-      //   method: 'GET',
-      // });
-      // return response.data || [];
-      
-      console.warn('Payments endpoint not yet implemented in backend');
-      return [];
+      const statusFilter = filters?.status;
+      const query: PaymentHistoryQueryParams = {
+        page: filters?.page ?? 0,
+        size: filters?.limit ?? 50,
+        sortBy: 'id',
+        direction: 'DESC',
+      };
+
+      console.log('Fetching payments with filters:', filters);
+      const response = await paymentServiceAPI.getPaymentHistory(query);
+      console.log('Payments API response:', response);
+
+      // Handle API response structure - check both response.data and response.content
+      let pageData: any;
+      if (response.data) {
+        pageData = response.data;
+      } else if ((response as any).content) {
+        pageData = (response as any).content;
+      }
+
+      const paymentsDto: PaymentDTO[] = pageData?.content || [];
+      console.log(`Found ${paymentsDto.length} payments in response`);
+
+      let payments = paymentsDto.map(convertPaymentDTOToPayment);
+
+      // Apply status filter if provided
+      if (statusFilter && statusFilter !== 'all') {
+        const beforeFilter = payments.length;
+        payments = payments.filter(p => p.status === statusFilter);
+        console.log(`Status filter applied: ${beforeFilter} -> ${payments.length} payments`);
+      }
+
+      return payments;
     } catch (error) {
       console.error('Error fetching payments:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch payments';
+      toast.error(errorMsg);
       return [];
     }
   },
 
   async refundPayment(id: string, amount: number): Promise<Payment> {
-    // TODO: Implement refund endpoint
-    throw new Error('Refund payment endpoint not yet implemented in backend');
+    // TODO: Implement refund endpoint when backend is available
+    console.warn('Refund payment endpoint not yet implemented in backend');
+    toast.error('Refund payment is not implemented on the server yet.');
+    throw new Error('Refund payment is not implemented on the server yet.');
   },
 
   // Reservations (Admin endpoints)
@@ -434,7 +681,9 @@ export const adminApi = {
       return response.data?.content || [];
     } catch (error) {
       console.error('Error fetching refund available reservations:', error);
-      throw error;
+      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch refund available reservations';
+      toast.error(errorMsg);
+      return [];
     }
   },
 
@@ -449,7 +698,9 @@ export const adminApi = {
       return response.message || 'Event cancelled successfully';
     } catch (error) {
       console.error('Error cancelling event:', error);
-      throw error;
+      const errorMsg = error instanceof Error ? error.message : 'Failed to cancel event';
+      toast.error(errorMsg);
+      throw new Error(errorMsg);
     }
   },
 
@@ -465,7 +716,9 @@ export const adminApi = {
       return response.data?.content || [];
     } catch (error) {
       console.error('Error fetching payment history:', error);
-      throw error;
+      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch payment history';
+      toast.error(errorMsg);
+      return [];
     }
   },
 };

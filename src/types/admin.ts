@@ -16,6 +16,13 @@ export interface Event {
   vendorId: string;
   createdAt: string;
   updatedAt: string;
+  // Optional tiered ticket information (mirrors backend event DTO)
+  vipTicketLimit?: number;
+  premiumTicketLimit?: number;
+  generalTicketLimit?: number;
+  vipTicketPrice?: number;
+  premiumTicketPrice?: number;
+  generalTicketPrice?: number;
 }
 
 export interface Ticket {
@@ -83,11 +90,19 @@ export interface EventFormData {
   date: string;
   time: string;
   location: string;
-  price: number;
   imageUrl: string;
   category: string;
-  availableTickets: number;
   status: 'draft' | 'published' | 'cancelled';
+  // Legacy single-tier fields (mapped to general ticket tier)
+  price: number;
+  availableTickets: number;
+  // New tiered ticket fields to match backend /api/v1/event request
+  vipTicketLimit: number;
+  premiumTicketLimit: number;
+  generalTicketLimit: number;
+  vipTicketPrice: number;
+  premiumTicketPrice: number;
+  generalTicketPrice: number;
 }
 
 export interface FilterOptions {

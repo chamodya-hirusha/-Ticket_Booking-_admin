@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { adminApi } from '../services/api/admin';
 import type { Ticket, FilterOptions } from '../types/admin';
+import { toast } from 'sonner@2.0.3';
 
 export function useAdminTickets(initialFilters?: FilterOptions) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -31,6 +32,8 @@ export function useAdminTickets(initialFilters?: FilterOptions) {
       setTickets(prev => prev.map(t => t.id === id ? updatedTicket : t));
       return updatedTicket;
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to update ticket';
+      toast.error(errorMsg);
       throw err instanceof Error ? err : new Error('Failed to update ticket');
     }
   };

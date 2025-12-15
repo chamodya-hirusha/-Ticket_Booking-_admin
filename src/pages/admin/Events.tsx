@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Plus, Edit, Trash2, Copy, Eye } from 'lucide-react';
+import { Edit, Trash2, Eye } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { DataTable, Column } from '../../components/admin/DataTable';
 import { StatusBadge } from '../../components/admin/StatusBadge';
 import { EventForm } from '../../components/admin/EventForm';
 import { useAdminEvents } from '../../hooks/useAdminEvents';
-import type { Event } from '../../types/admin';
+import type { Event, EventFormData } from '../../types/admin';
 import {
   Dialog,
   DialogContent,
@@ -32,25 +32,17 @@ import {
 } from '../../components/ui/select';
 import { toast } from 'sonner@2.0.3';
 
-type ViewMode = 'list' | 'create' | 'edit';
+type ViewMode = 'list' | 'edit';
 
 export function Events() {
-  const { events, isLoading, createEvent, updateEvent, deleteEvent, filters, setFilters } = useAdminEvents();
+  const { events, isLoading, updateEvent, deleteEvent, filters, setFilters } = useAdminEvents();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
+  const [viewEvent, setViewEvent] = useState<Event | null>(null);
 
-  const handleCreate = async (data: any) => {
-    try {
-      await createEvent(data);
-      setViewMode('list');
-      toast.success('Event created successfully');
-    } catch (error) {
-      toast.error('Failed to create event');
-    }
-  };
 
-  const handleUpdate = async (data: any) => {
+  const handleUpdate = async (data: EventFormData) => {
     if (!selectedEvent) return;
     
     try {
@@ -72,26 +64,6 @@ export function Events() {
       toast.success('Event deleted successfully');
     } catch (error) {
       toast.error('Failed to delete event');
-    }
-  };
-
-  const handleDuplicate = async (event: Event) => {
-    try {
-      await createEvent({
-        name: `${event.name} (Copy)`,
-        description: event.description,
-        date: event.date,
-        time: event.time,
-        location: event.location,
-        price: event.price,
-        imageUrl: event.imageUrl,
-        category: event.category,
-        availableTickets: event.availableTickets,
-        status: 'draft',
-      });
-      toast.success('Event duplicated successfully');
-    } catch (error) {
-      toast.error('Failed to duplicate event');
     }
   };
 
@@ -174,6 +146,14 @@ export function Events() {
           <Button
             variant="ghost"
             size="icon"
+            onClick={() => setViewEvent(event)}
+            title="View details"
+          >
+            <Eye className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => {
               setSelectedEvent(event);
               setViewMode('edit');
@@ -181,14 +161,6 @@ export function Events() {
             title="Edit event"
           >
             <Edit className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleDuplicate(event)}
-            title="Duplicate event"
-          >
-            <Copy className="size-4" />
           </Button>
           <Button
             variant="ghost"
@@ -202,27 +174,6 @@ export function Events() {
       ),
     },
   ];
-
-  if (viewMode === 'create') {
-    return (
-      <div>
-        <div className="mb-6">
-          <Button variant="ghost" onClick={() => setViewMode('list')}>
-            ← Back to Events
-          </Button>
-        </div>
-        <div className="max-w-4xl">
-          <h1 className="text-foreground mb-6">Create New Event</h1>
-          <div className="bg-card border rounded-xl p-6">
-            <EventForm
-              onSubmit={handleCreate}
-              onCancel={() => setViewMode('list')}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (viewMode === 'edit' && selectedEvent) {
     return (
@@ -262,17 +213,13 @@ export function Events() {
             Manage all events on your platform
           </p>
         </div>
-        <Button onClick={() => setViewMode('create')}>
-          <Plus className="size-4 mr-2" />
-          Create Event
-        </Button>
       </div>
 
       {/* Filters */}
       <div className="flex items-center gap-4">
         <Select
           value={filters.status || 'all'}
-          onValueChange={(value) => 
+          onValueChange={(value: string) =>
             setFilters({ ...filters, status: value === 'all' ? undefined : value })
           }
         >
@@ -289,7 +236,7 @@ export function Events() {
 
         <Select
           value={filters.category || 'all'}
-          onValueChange={(value) => 
+          onValueChange={(value: string) =>
             setFilters({ ...filters, category: value === 'all' ? undefined : value })
           }
         >
@@ -319,6 +266,114 @@ export function Events() {
           emptyMessage="No events found"
         />
       </div>
+
+      {/* Event Details Dialog */}
+      <Dialog open={!!viewEvent} onOpenChange={() => setViewEvent(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Event Details</DialogTitle>
+            <DialogDescription>
+              Detailed information about {viewEvent?.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewEvent && (
+            <div className="space-y-6">
+              {/* Basic Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 flex items-center gap-3">
+                  {viewEvent.imageUrl && (
+                    <img
+                      src={viewEvent.imageUrl}
+                      alt={viewEvent.name}
+                      className="size-16 rounded-lg object-cover"
+                    />
+                  )}
+                  <div>
+                    <p className="text-foreground text-lg font-semibold">{viewEvent.name}</p>
+                    <p className="text-sm text-muted-foreground capitalize">
+                      {viewEvent.category}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Date & Time</p>
+                  <p className="text-foreground mt-1">
+                    {new Date(viewEvent.date).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}{' '}
+                    at {viewEvent.time}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Location</p>
+                  <p className="text-foreground mt-1">{viewEvent.location}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <div className="mt-1">
+                    <StatusBadge status={viewEvent.status} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Created At</p>
+                  <p className="text-foreground mt-1">
+                    {new Date(viewEvent.createdAt).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="pt-4 border-t">
+                <h3 className="text-foreground mb-2">Description</h3>
+                <p className="text-sm text-muted-foreground whitespace-pre-line">
+                  {viewEvent.description}
+                </p>
+              </div>
+
+              {/* Ticket Tiers */}
+              <div className="pt-4 border-t">
+                <h3 className="text-foreground mb-4">Ticket Details</h3>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="bg-muted/30 p-3 rounded-lg">
+                    <p className="text-muted-foreground">General</p>
+                    <p className="text-foreground mt-1">
+                      {viewEvent.generalTicketLimit ?? viewEvent.availableTickets} tickets
+                    </p>
+                    <p className="text-foreground mt-1">
+                      ${viewEvent.generalTicketPrice ?? viewEvent.price}
+                    </p>
+                  </div>
+                  <div className="bg-muted/30 p-3 rounded-lg">
+                    <p className="text-muted-foreground">Premium</p>
+                    <p className="text-foreground mt-1">
+                      {viewEvent.premiumTicketLimit ?? 0} tickets
+                    </p>
+                    <p className="text-foreground mt-1">
+                      ${viewEvent.premiumTicketPrice ?? 0}
+                    </p>
+                  </div>
+                  <div className="bg-muted/30 p-3 rounded-lg">
+                    <p className="text-muted-foreground">VIP</p>
+                    <p className="text-foreground mt-1">
+                      {viewEvent.vipTicketLimit ?? 0} tickets
+                    </p>
+                    <p className="text-foreground mt-1">
+                      ${viewEvent.vipTicketPrice ?? 0}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!eventToDelete} onOpenChange={() => setEventToDelete(null)}>

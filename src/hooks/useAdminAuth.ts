@@ -23,31 +23,59 @@ export function useAdminAuth() {
           // Validate the token with the backend
           try {
             const response = await userServiceAPI.getCurrentUser();
+            console.log('getCurrentUser response:', response);
             
-            if (response.success && response.data) {
-              const userData = response.data;
+            // Handle API response structure: check both response.data and response.content
+            let userData: any = null;
+            
+            // Check for content structure (actual API format)
+            if ((response as any).content) {
+              userData = (response as any).content;
+              console.log('User data found in response.content');
+            }
+            // Check for data structure (standard ResponseDTO format)
+            else if (response.data) {
+              userData = response.data;
+              console.log('User data found in response.data');
+            }
+            // Check if response itself is the user data
+            else if ((response as any).id || (response as any).email) {
+              userData = response;
+              console.log('User data found at root level');
+            }
+            
+            if (userData) {
               // Only allow admin role to access
               const userRole = userData.role?.toLowerCase();
+              console.log('User role:', userRole);
+              
               if (userRole === 'admin') {
                 setAdmin({
-                  id: userData.id,
-                  name: userData.name,
-                  email: userData.email,
+                  id: userData.id || userData.userId || '',
+                  name: userData.name || 'Admin User',
+                  email: userData.email || '',
                   role: 'admin',
                 });
+                console.log('Admin authenticated successfully');
               } else {
                 // User is not an admin, clear token and deny access
+                console.error('User is not admin, role:', userRole);
                 localStorage.removeItem('adminToken');
                 sessionStorage.removeItem('adminToken');
                 setAdmin(null);
               }
             } else {
+              // No user data found, check if response indicates success
+              if (response.success || (response as any).code === '00') {
+                console.warn('Response indicates success but no user data found');
+              }
               // Invalid token, clear it
               localStorage.removeItem('adminToken');
               sessionStorage.removeItem('adminToken');
               setAdmin(null);
             }
           } catch (error) {
+            console.error('Token validation failed:', error);
             // Token validation failed, clear it
             localStorage.removeItem('adminToken');
             sessionStorage.removeItem('adminToken');

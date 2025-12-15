@@ -37,11 +37,20 @@ export function EventForm({ event, onSubmit, onCancel, isLoading = false }: Even
     date: event?.date || '',
     time: event?.time || '',
     location: event?.location || '',
-    price: event?.price || 0,
     imageUrl: event?.imageUrl || '',
     category: event?.category || '',
-    availableTickets: event?.availableTickets || 0,
     status: event?.status || 'draft',
+    // Legacy single-tier fields – kept in sync with general tier
+    price: event?.price || 0,
+    availableTickets: event?.availableTickets || 0,
+    // New tiered ticket fields – hydrate from event if present, otherwise from legacy values
+    vipTicketLimit: event?.vipTicketLimit ?? 0,
+    premiumTicketLimit: event?.premiumTicketLimit ?? 0,
+    generalTicketLimit:
+      event?.generalTicketLimit ?? event?.availableTickets ?? 0,
+    vipTicketPrice: event?.vipTicketPrice ?? 0,
+    premiumTicketPrice: event?.premiumTicketPrice ?? 0,
+    generalTicketPrice: event?.generalTicketPrice ?? event?.price ?? 0,
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof EventFormData, string>>>({});
@@ -64,14 +73,15 @@ export function EventForm({ event, onSubmit, onCancel, isLoading = false }: Even
     if (!formData.location.trim()) {
       newErrors.location = 'Location is required';
     }
-    if (formData.price <= 0) {
-      newErrors.price = 'Price must be greater than 0';
-    }
     if (!formData.category) {
       newErrors.category = 'Category is required';
     }
-    if (formData.availableTickets <= 0) {
-      newErrors.availableTickets = 'Available tickets must be greater than 0';
+    // Require at least a valid general tier
+    if (formData.generalTicketPrice <= 0) {
+      newErrors.generalTicketPrice = 'General ticket price must be greater than 0';
+    }
+    if (formData.generalTicketLimit <= 0) {
+      newErrors.generalTicketLimit = 'General ticket limit must be greater than 0';
     }
 
     setErrors(newErrors);
@@ -86,7 +96,15 @@ export function EventForm({ event, onSubmit, onCancel, isLoading = false }: Even
     }
 
     try {
-      await onSubmit(formData);
+      // Keep legacy single-tier fields in sync with the general tier so other
+      // parts of the admin UI (e.g. event lists) continue to work as before.
+      const payload: EventFormData = {
+        ...formData,
+        price: formData.generalTicketPrice,
+        availableTickets: formData.generalTicketLimit,
+      };
+
+      await onSubmit(payload);
     } catch (error) {
       console.error('Error submitting form:', error);
     }
@@ -184,39 +202,103 @@ export function EventForm({ event, onSubmit, onCancel, isLoading = false }: Even
           )}
         </div>
 
-        {/* Price */}
+        {/* General Ticket Price */}
         <div>
-          <Label htmlFor="price">Price ($) *</Label>
+          <Label htmlFor="generalTicketPrice">General Ticket Price ($) *</Label>
           <Input
-            id="price"
+            id="generalTicketPrice"
             type="number"
             step="0.01"
-            value={formData.price}
-            onChange={(e) => handleChange('price', parseFloat(e.target.value) || 0)}
+            value={formData.generalTicketPrice}
+            onChange={(e) =>
+              handleChange('generalTicketPrice', parseFloat(e.target.value) || 0)
+            }
             placeholder="0.00"
             className="mt-2"
-            aria-invalid={!!errors.price}
+            aria-invalid={!!errors.generalTicketPrice}
           />
-          {errors.price && (
-            <p className="text-sm text-destructive mt-1">{errors.price}</p>
+          {errors.generalTicketPrice && (
+            <p className="text-sm text-destructive mt-1">
+              {errors.generalTicketPrice}
+            </p>
           )}
         </div>
 
-        {/* Available Tickets */}
+        {/* General Ticket Limit */}
         <div>
-          <Label htmlFor="availableTickets">Available Tickets *</Label>
+          <Label htmlFor="generalTicketLimit">General Ticket Limit *</Label>
           <Input
-            id="availableTickets"
+            id="generalTicketLimit"
             type="number"
-            value={formData.availableTickets}
-            onChange={(e) => handleChange('availableTickets', parseInt(e.target.value) || 0)}
+            value={formData.generalTicketLimit}
+            onChange={(e) =>
+              handleChange('generalTicketLimit', parseInt(e.target.value) || 0)
+            }
             placeholder="0"
             className="mt-2"
-            aria-invalid={!!errors.availableTickets}
+            aria-invalid={!!errors.generalTicketLimit}
           />
-          {errors.availableTickets && (
-            <p className="text-sm text-destructive mt-1">{errors.availableTickets}</p>
+          {errors.generalTicketLimit && (
+            <p className="text-sm text-destructive mt-1">
+              {errors.generalTicketLimit}
+            </p>
           )}
+        </div>
+
+        {/* VIP & Premium Ticket Tiers (optional) */}
+        <div>
+          <Label htmlFor="vipTicketLimit">VIP Ticket Limit</Label>
+          <Input
+            id="vipTicketLimit"
+            type="number"
+            value={formData.vipTicketLimit}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              handleChange('vipTicketLimit', parseInt(e.target.value) || 0)
+            }
+            placeholder="0"
+            className="mt-2"
+          />
+        </div>
+        <div>
+          <Label htmlFor="vipTicketPrice">VIP Ticket Price ($)</Label>
+          <Input
+            id="vipTicketPrice"
+            type="number"
+            step="0.01"
+            value={formData.vipTicketPrice}
+            onChange={(e) =>
+              handleChange('vipTicketPrice', parseFloat(e.target.value) || 0)
+            }
+            placeholder="0.00"
+            className="mt-2"
+          />
+        </div>
+        <div>
+          <Label htmlFor="premiumTicketLimit">Premium Ticket Limit</Label>
+          <Input
+            id="premiumTicketLimit"
+            type="number"
+            value={formData.premiumTicketLimit}
+            onChange={(e) =>
+              handleChange('premiumTicketLimit', parseInt(e.target.value) || 0)
+            }
+            placeholder="0"
+            className="mt-2"
+          />
+        </div>
+        <div>
+          <Label htmlFor="premiumTicketPrice">Premium Ticket Price ($)</Label>
+          <Input
+            id="premiumTicketPrice"
+            type="number"
+            step="0.01"
+            value={formData.premiumTicketPrice}
+            onChange={(e) =>
+              handleChange('premiumTicketPrice', parseFloat(e.target.value) || 0)
+            }
+            placeholder="0.00"
+            className="mt-2"
+          />
         </div>
 
         {/* Category */}
@@ -224,7 +306,7 @@ export function EventForm({ event, onSubmit, onCancel, isLoading = false }: Even
           <Label htmlFor="category">Category *</Label>
           <Select
             value={formData.category}
-            onValueChange={(value) => handleChange('category', value)}
+            onValueChange={(value: string) => handleChange('category', value)}
           >
             <SelectTrigger className="mt-2" aria-invalid={!!errors.category}>
               <SelectValue placeholder="Select category" />

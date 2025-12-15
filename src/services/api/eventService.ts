@@ -2,6 +2,9 @@
 // Base URL - Update this to match your backend URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
+// Import toast for error notifications
+import { toast } from 'sonner@2.0.3';
+
 // Response DTO interface
 interface ResponseDTO<T = any> {
   success: boolean;
@@ -102,24 +105,73 @@ class EventServiceAPI {
         ...options.headers,
       };
 
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      const url = `${this.baseURL}${endpoint}`;
+      console.log(`Event API Request: ${options.method || 'GET'} ${url}`);
+
+      const response = await fetch(url, {
         ...options,
         headers,
       });
 
+      console.log(`Event API Response: ${response.status} ${response.statusText}`);
+
       // Check if response is JSON
       const contentType = response.headers.get('content-type');
-      let data: ResponseDTO<T>;
+      let rawData: any;
 
       if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
+        try {
+          rawData = await response.json();
+          console.log('Event API Response data:', rawData);
+        } catch (jsonError) {
+          console.error('Failed to parse JSON response:', jsonError);
+          toast.error('Invalid response format from server');
+          return {
+            success: false,
+            message: 'Invalid response format from server',
+            error: 'Invalid response format from server',
+          } as ResponseDTO<T>;
+        }
       } else {
         const text = await response.text();
-        throw new Error(text || `HTTP ${response.status}: ${response.statusText}`);
+        console.error('Non-JSON response received:', text);
+        const errorMsg = text || `HTTP ${response.status}: ${response.statusText}`;
+        toast.error(errorMsg);
+        return {
+          success: false,
+          message: errorMsg,
+          error: errorMsg,
+        } as ResponseDTO<T>;
+      }
+
+      // Handle actual API response structure: { code: "00", content: {...}, message: "..." }
+      // Convert it to ResponseDTO format for compatibility
+      let data: ResponseDTO<T>;
+
+      if ((rawData as any).content !== undefined) {
+        // Actual API structure - convert to ResponseDTO
+        data = {
+          success: (rawData as any).code === '00' || response.ok,
+          message: (rawData as any).message || '',
+          data: (rawData as any).content as T,
+          error: (rawData as any).code !== '00' ? (rawData as any).message : undefined,
+        };
+        console.log('Converted API response to ResponseDTO format');
+      } else {
+        // Standard ResponseDTO structure
+        data = rawData as ResponseDTO<T>;
       }
 
       if (!response.ok) {
-        throw new Error(data.message || data.error || `Request failed with status ${response.status}`);
+        const errorMsg = data.message || data.error || `Request failed with status ${response.status}`;
+        console.error('Event API request failed:', errorMsg);
+        toast.error(errorMsg);
+        return {
+          success: false,
+          message: errorMsg,
+          error: errorMsg,
+          data: data.data,
+        } as ResponseDTO<T>;
       }
 
       return data;
@@ -127,11 +179,30 @@ class EventServiceAPI {
       if (error instanceof Error) {
         // Check for network errors
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          throw new Error('Network error. Please check your connection and API server.');
+          console.error('Network error detected');
+          const networkError = 'Network error. Please check your connection and API server.';
+          toast.error(networkError);
+          return {
+            success: false,
+            message: networkError,
+            error: networkError,
+          } as ResponseDTO<T>;
         }
-        throw error;
+        toast.error(error.message || 'An error occurred');
+        return {
+          success: false,
+          message: error.message || 'An error occurred',
+          error: error.message || 'An error occurred',
+        } as ResponseDTO<T>;
       }
-      throw new Error('An unexpected error occurred');
+      console.error('Unexpected error type:', error);
+      const unexpectedError = 'An unexpected error occurred';
+      toast.error(unexpectedError);
+      return {
+        success: false,
+        message: unexpectedError,
+        error: unexpectedError,
+      } as ResponseDTO<T>;
     }
   }
 

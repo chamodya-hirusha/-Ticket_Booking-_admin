@@ -49,7 +49,8 @@ export function Payments() {
       });
       setPayments(data);
     } catch (error) {
-      toast.error('Failed to load payments');
+      const message = error instanceof Error ? error.message : 'Failed to load payments';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -71,7 +72,8 @@ export function Payments() {
       setRefundAmount('');
       toast.success('Refund processed successfully');
     } catch (error) {
-      toast.error('Failed to process refund');
+      const message = error instanceof Error ? error.message : 'Failed to process refund';
+      toast.error(message);
     }
   };
 

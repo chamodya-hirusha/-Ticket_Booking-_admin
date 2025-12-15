@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/button';
 import { DataTable, Column } from '../../components/admin/DataTable';
 import { StatusBadge } from '../../components/admin/StatusBadge';
 import { adminApi } from '../../services/api/admin';
+import { userServiceAPI } from '../../services/api/userService';
 import type { Vendor } from '../../types/admin';
 import {
   Dialog,
@@ -26,6 +27,13 @@ export function Vendors() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isAddVendorOpen, setIsAddVendorOpen] = useState(false);
+  const [isCreatingVendor, setIsCreatingVendor] = useState(false);
+  const [newVendorName, setNewVendorName] = useState('');
+  const [newVendorEmail, setNewVendorEmail] = useState('');
+  const [newVendorPhone, setNewVendorPhone] = useState('');
+  const [newVendorWebsite, setNewVendorWebsite] = useState('');
+  const [newVendorPassword, setNewVendorPassword] = useState('');
 
   useEffect(() => {
     loadVendors();
@@ -59,6 +67,47 @@ export function Vendors() {
       toast.success(actionMessage);
     } catch (error) {
       toast.error('Failed to update vendor status');
+    }
+  };
+
+  const handleCreateVendor = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!newVendorName || !newVendorEmail || !newVendorPassword) {
+      toast.error('Name, email and password are required');
+      return;
+    }
+
+    try {
+      setIsCreatingVendor(true);
+      const response = await userServiceAPI.vendorRegister({
+        name: newVendorName,
+        email: newVendorEmail,
+        phone: newVendorPhone,
+        website: newVendorWebsite,
+        password: newVendorPassword,
+      });
+
+      if (response.success) {
+        toast.success(response.message || 'Vendor created successfully');
+        setIsAddVendorOpen(false);
+        setNewVendorName('');
+        setNewVendorEmail('');
+        setNewVendorPhone('');
+        setNewVendorWebsite('');
+        setNewVendorPassword('');
+        await loadVendors();
+      } else {
+        toast.error(response.message || 'Failed to create vendor');
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message || 'Failed to create vendor');
+      } else {
+        toast.error('Failed to create vendor');
+      }
+    } finally {
+      setIsCreatingVendor(false);
     }
   };
 
@@ -168,6 +217,9 @@ export function Vendors() {
             Manage vendor applications and accounts
           </p>
         </div>
+        <Button onClick={() => setIsAddVendorOpen(true)}>
+          Add Vendor
+        </Button>
       </div>
 
       {/* Filters */}
@@ -310,6 +362,95 @@ export function Vendors() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Vendor Dialog */}
+      <Dialog open={isAddVendorOpen} onOpenChange={setIsAddVendorOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Vendor</DialogTitle>
+            <DialogDescription>
+              Create a new vendor account. Required fields are marked with *.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateVendor} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Name *
+              </label>
+              <input
+                type="text"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={newVendorName}
+                onChange={(e) => setNewVendorName(e.target.value)}
+                placeholder="Contact person name"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Email *
+              </label>
+              <input
+                type="email"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={newVendorEmail}
+                onChange={(e) => setNewVendorEmail(e.target.value)}
+                placeholder="vendor@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Phone
+              </label>
+              <input
+                type="tel"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={newVendorPhone}
+                onChange={(e) => setNewVendorPhone(e.target.value)}
+                placeholder="+1 555 000 0000"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Website
+              </label>
+              <input
+                type="url"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={newVendorWebsite}
+                onChange={(e) => setNewVendorWebsite(e.target.value)}
+                placeholder="https://vendor-website.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Password *
+              </label>
+              <input
+                type="password"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={newVendorPassword}
+                onChange={(e) => setNewVendorPassword(e.target.value)}
+                placeholder="Temporary password for vendor"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsAddVendorOpen(false)}
+                disabled={isCreatingVendor}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isCreatingVendor}>
+                {isCreatingVendor ? 'Creating...' : 'Create Vendor'}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

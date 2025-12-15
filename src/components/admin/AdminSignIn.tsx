@@ -36,49 +36,109 @@ export default function AdminSignIn() {
     }
 
     try {
+      console.log('Attempting admin login for:', email);
       const response = await userServiceAPI.adminLogin(email, password);
+      console.log('Login response received:', { 
+        success: response.success, 
+        hasData: !!response.data,
+        message: response.message,
+        error: response.error
+      });
 
-      // Check if response is successful
+      // Check if we have a token - this is the primary indicator of success
+      // API response structure: { code: "00", content: { token: "...", role: "ADMIN" }, message: "..." }
+      let token: string | undefined;
+      let userRole: string | undefined;
+
+      // Check for token in response.content.token (actual API structure)
+      if ((response as any).content?.token) {
+        token = (response as any).content.token;
+        userRole = (response as any).content.role?.toLowerCase();
+        console.log('Token found in response.content.token, role:', userRole);
+      }
+      // Check for token in response.data.token (standard ResponseDTO structure)
+      else if (response.data?.token) {
+        token = response.data.token;
+        userRole = response.data.user?.role?.toLowerCase();
+        console.log('Token found in response.data.token');
+      } 
+      // Check if token is directly in response.data (alternative structure)
+      else if (typeof response.data === 'string') {
+        token = response.data;
+        console.log('Token found as string in response.data');
+      }
+      // Check if token is at root level (another alternative structure)
+      else if ((response as any).token) {
+        token = (response as any).token;
+        userRole = (response as any).user?.role?.toLowerCase();
+        console.log('Token found at root level of response');
+      }
+
+      // If we found a token, proceed with login
+      if (token) {
+        console.log('Token found in response, proceeding with login. Role:', userRole || 'not provided');
+
+        // Verify that the user has admin role (if role is provided in response)
+        if (userRole && userRole !== 'admin') {
+          console.error('Login failed - user is not admin, role:', userRole);
+          setError("Access denied. Admin credentials required.");
+          setIsLoading(false);
+          return;
+        }
+
+        // If role is not in response, we'll validate it after token is stored via getCurrentUser
+        console.log('Login successful, storing token. Role:', userRole || 'not provided (will validate later)');
+
+        // Store token based on remember me preference
+        if (rememberMe) {
+          localStorage.setItem("adminToken", token);
+          console.log('Token stored in localStorage');
+        } else {
+          sessionStorage.setItem("adminToken", token);
+          console.log('Token stored in sessionStorage');
+        }
+        
+        // Redirect to dashboard by reloading (triggers auth check and shows dashboard)
+        console.log('Redirecting to dashboard...');
+        window.location.reload();
+        return;
+      }
+
+      // If no token but response indicates success in message, log warning
+      if (response.message && (response.message.toLowerCase().includes('success') || response.message.toLowerCase().includes('login'))) {
+        console.warn('Response indicates success but no token found. Full response:', response);
+        setError("Authentication failed. Token not found in response. Please contact administrator.");
+        setIsLoading(false);
+        return;
+      }
+
+      // If we reach here, login failed
       if (!response.success) {
-        setError(response.message || response.error || "Invalid email or password");
+        const errorMsg = response.message || response.error || "Invalid email or password";
+        // Don't treat success messages as errors
+        if (errorMsg.toLowerCase().includes('success')) {
+          console.error('Login failed - API returned success message but no token. Response structure may be different.');
+          setError("Authentication failed. Please contact administrator.");
+        } else {
+          console.error('Login failed - response not successful:', errorMsg);
+          setError(errorMsg);
+        }
         setIsLoading(false);
         return;
       }
 
       // Check if data exists
       if (!response.data) {
+        console.error('Login failed - no data in response');
         setError("Authentication failed. No data received from server.");
         setIsLoading(false);
         return;
       }
 
-      // Store auth token
-      const token = response.data.token;
-      if (!token) {
-        setError("Authentication failed. No token received.");
-        setIsLoading(false);
-        return;
-      }
-
-      // Verify that the user has admin role (if role is provided in response)
-      const userRole = response.data.user?.role?.toLowerCase();
-      if (userRole && userRole !== 'admin') {
-        setError("Access denied. Admin credentials required.");
-        setIsLoading(false);
-        return;
-      }
-
-      // If role is not in response, we'll validate it after token is stored via getCurrentUser
-
-      // Store token based on remember me preference
-      if (rememberMe) {
-        localStorage.setItem("adminToken", token);
-      } else {
-        sessionStorage.setItem("adminToken", token);
-      }
-      
-      // Redirect to dashboard by reloading (triggers auth check and shows dashboard)
-      window.location.reload();
+      // This should not be reached if token exists, but keeping as fallback
+      console.error('Login failed - no token in response data');
+      setError("Authentication failed. No token received.");
+      setIsLoading(false);
     } catch (err) {
       console.error('Login error:', err);
       const errorMessage = err instanceof Error ? err.message : "An error occurred. Please try again.";
@@ -159,7 +219,7 @@ export default function AdminSignIn() {
                 <Checkbox
                   id="remember"
                   checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                  onCheckedChange={(checked: boolean) => setRememberMe(checked)}
                   disabled={isLoading}
                 />
                 <Label

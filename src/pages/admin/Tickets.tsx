@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { DataTable, Column } from '../../components/admin/DataTable';
 import { StatusBadge } from '../../components/admin/StatusBadge';
-import { useAdminTickets } from '../../hooks/useAdminTickets';
-import type { Ticket } from '../../types/admin';
+import type { Ticket, FilterOptions } from '../../types/admin';
 import {
   Select,
   SelectContent,
@@ -20,18 +19,67 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { toast } from 'sonner@2.0.3';
+import { reservationServiceAPI, type ReservationDTO, type ReservationQueryParams } from '../../services/api/reservationService';
 
 export function Tickets() {
-  const { tickets, isLoading, updateTicketStatus, filters, setFilters } = useAdminTickets();
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filters, setFilters] = useState<FilterOptions>({});
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
 
-  const handleStatusUpdate = async (ticketId: string, status: Ticket['status']) => {
+  const loadTickets = async () => {
     try {
-      await updateTicketStatus(ticketId, status);
-      toast.success('Ticket status updated successfully');
+      setIsLoading(true);
+
+      const queryParams: ReservationQueryParams = {
+        page: filters.page ?? 0,
+        size: filters.limit ?? 50,
+        sortBy: 'id',
+        direction: 'DESC',
+      };
+
+      const response = await reservationServiceAPI.getAllReservations(queryParams);
+      
+      if (!response.success || !response.data) {
+        const errorMsg = response.message || response.error || 'Failed to load tickets';
+        toast.error(errorMsg);
+        setTickets([]);
+        return;
+      }
+
+      const page = response.data;
+      const reservations: ReservationDTO[] = page?.content || [];
+
+      const mappedTickets: Ticket[] = reservations.map((r) => ({
+        id: String(r.id),
+        eventId: String(r.eventId),
+        userId: String(r.userId),
+        purchaseDate: r.createdAt || new Date().toISOString(),
+        status: (r.status?.toLowerCase() as Ticket['status']) || 'pending',
+        quantity: r.ticketCount,
+        totalPrice: 0,
+        bookingReference: `RES-${r.id}`,
+        paymentId: '',
+      }));
+
+      setTickets(mappedTickets);
     } catch (error) {
-      toast.error('Failed to update ticket status');
+      const message = error instanceof Error ? error.message : 'Failed to load tickets';
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    loadTickets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.page, filters.limit]);
+
+  const handleStatusUpdate = async (_ticketId: string, _status: Ticket['status']) => {
+    // Admin reservation API does not currently support updating individual ticket status.
+    // Show a message to indicate this action is not available.
+    toast.error('Updating ticket status is not supported in the current API.');
   };
 
   const handleExport = () => {
@@ -171,7 +219,7 @@ export function Tickets() {
       <div className="flex items-center gap-4">
         <Select
           value={filters.status || 'all'}
-          onValueChange={(value) => 
+          onValueChange={(value: Ticket['status'] | 'all') =>
             setFilters({ ...filters, status: value === 'all' ? undefined : value })
           }
         >

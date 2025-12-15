@@ -34,7 +34,6 @@ export function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline">View Reports</Button>
-          <Button>Create Event</Button>
         </div>
       </div>
 

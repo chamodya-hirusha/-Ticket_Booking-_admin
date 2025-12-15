@@ -2,6 +2,9 @@
 // Base URL - Update this to match your backend URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
+// Import toast for error notifications
+import { toast } from 'sonner@2.0.3';
+
 // Response DTO interface
 interface ResponseDTO<T = any> {
   success: boolean;
@@ -51,24 +54,55 @@ class UserServiceAPI {
         ...options.headers,
       };
 
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      const url = `${this.baseURL}${endpoint}`;
+      console.log(`API Request: ${options.method || 'GET'} ${url}`);
+
+      const response = await fetch(url, {
         ...options,
         headers,
       });
+
+      console.log(`API Response: ${response.status} ${response.statusText}`);
 
       // Check if response is JSON
       const contentType = response.headers.get('content-type');
       let data: ResponseDTO<T>;
 
       if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
+        try {
+          data = await response.json();
+          console.log('Response data:', { success: data.success, hasData: !!data.data, message: data.message });
+        } catch (jsonError) {
+          console.error('Failed to parse JSON response:', jsonError);
+          toast.error('Invalid response format from server');
+          return {
+            success: false,
+            message: 'Invalid response format from server',
+            error: 'Invalid response format from server',
+          } as ResponseDTO<T>;
+        }
       } else {
         const text = await response.text();
-        throw new Error(text || `HTTP ${response.status}: ${response.statusText}`);
+        console.error('Non-JSON response received:', text);
+        const errorMsg = text || `HTTP ${response.status}: ${response.statusText}`;
+        toast.error(errorMsg);
+        return {
+          success: false,
+          message: errorMsg,
+          error: errorMsg,
+        } as ResponseDTO<T>;
       }
 
       if (!response.ok) {
-        throw new Error(data.message || data.error || `Request failed with status ${response.status}`);
+        const errorMsg = data.message || data.error || `Request failed with status ${response.status}`;
+        console.error('API request failed:', errorMsg);
+        toast.error(errorMsg);
+        return {
+          success: false,
+          message: errorMsg,
+          error: errorMsg,
+          data: data.data,
+        } as ResponseDTO<T>;
       }
 
       return data;
@@ -76,11 +110,31 @@ class UserServiceAPI {
       if (error instanceof Error) {
         // Check for network errors
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          throw new Error('Network error. Please check your connection and API server.');
+          console.error('Network error detected');
+          const networkError = 'Network error. Please check your connection and API server.';
+          toast.error(networkError);
+          return {
+            success: false,
+            message: networkError,
+            error: networkError,
+          } as ResponseDTO<T>;
         }
-        throw error;
+        // Show toast for other errors
+        toast.error(error.message || 'An error occurred');
+        return {
+          success: false,
+          message: error.message || 'An error occurred',
+          error: error.message || 'An error occurred',
+        } as ResponseDTO<T>;
       }
-      throw new Error('An unexpected error occurred');
+      console.error('Unexpected error type:', error);
+      const unexpectedError = 'An unexpected error occurred';
+      toast.error(unexpectedError);
+      return {
+        success: false,
+        message: unexpectedError,
+        error: unexpectedError,
+      } as ResponseDTO<T>;
     }
   }
 
@@ -95,29 +149,47 @@ class UserServiceAPI {
   // Admin Login - uses general login endpoint (backend should handle admin role)
   async adminLogin(email: string, password: string): Promise<ResponseDTO<LoginResponse>> {
     try {
-      return await this.request<LoginResponse>('/api/v1/auth/login', {
+      console.log('Calling adminLogin API endpoint');
+      const response = await this.request<LoginResponse>('/api/v1/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
+      console.log('adminLogin API call successful');
+      return response;
     } catch (error) {
-      // Re-throw with more context
+      console.error('adminLogin API call failed:', error);
+      // Show toast with appropriate message
       if (error instanceof Error) {
         if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-          throw new Error('Invalid email or password');
+          toast.error('Invalid email or password');
+          return {
+            success: false,
+            message: 'Invalid email or password',
+            error: 'Invalid email or password',
+          } as ResponseDTO<LoginResponse>;
         }
-        throw error;
+        toast.error(error.message || 'Login failed. Please try again.');
+        return {
+          success: false,
+          message: error.message || 'Login failed. Please try again.',
+          error: error.message || 'Login failed. Please try again.',
+        } as ResponseDTO<LoginResponse>;
       }
-      throw new Error('Login failed. Please try again.');
+      toast.error('Login failed. Please try again.');
+      return {
+        success: false,
+        message: 'Login failed. Please try again.',
+        error: 'Login failed. Please try again.',
+      } as ResponseDTO<LoginResponse>;
     }
   }
 
   async register(data: {
     name: string;
-    password: string;
     email: string;
     phone: string;
-  }): Promise<ResponseDTO> {
-    return this.request('/api/v1/auth/register', {
+  }): Promise<ResponseDTO<LoginResponse>> {
+    return this.request<LoginResponse>('/api/v1/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -173,10 +245,17 @@ class UserServiceAPI {
   }
 
   async vendorLogin(email: string, password: string): Promise<ResponseDTO<LoginResponse>> {
-    return this.request<LoginResponse>('/api/v1/auth/vendor/login', {
+    const response = await this.request<LoginResponse>('/api/v1/auth/vendor/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    
+    // Store vendor token if login successful
+    if (response.success && response.data?.token) {
+      localStorage.setItem('vendorToken', response.data.token);
+    }
+    
+    return response;
   }
 
   async vendorRegister(data: {
@@ -195,6 +274,23 @@ class UserServiceAPI {
   async healthCheck(): Promise<string> {
     const response = await fetch(`${this.baseURL}/api/v1/user/health`);
     return response.text();
+  }
+
+  // Vendor token management
+  getVendorToken(): string | null {
+    return localStorage.getItem('vendorToken');
+  }
+
+  setVendorToken(token: string): void {
+    localStorage.setItem('vendorToken', token);
+  }
+
+  clearVendorToken(): void {
+    localStorage.removeItem('vendorToken');
+  }
+
+  isVendorLoggedIn(): boolean {
+    return !!this.getVendorToken();
   }
 }
 
