@@ -24,7 +24,7 @@ export function AdminLayout({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <div className="h-screen flex overflow-hidden bg-background">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-background">
       {/* Desktop Sidebar */}
       <div className="hidden lg:flex">
         <AdminSidebar
@@ -57,7 +57,7 @@ export function AdminLayout({
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col">
         <AdminHeader
           adminName={adminName}
           adminEmail={adminEmail}
@@ -66,7 +66,7 @@ export function AdminLayout({
         />
 
         <main className="flex-1 overflow-y-auto">
-          <div className="container mx-auto p-6">
+          <div className="w-full max-w-6xl mx-auto px-4 py-4 sm:px-6 sm:py-6">
             {children}
           </div>
         </main>

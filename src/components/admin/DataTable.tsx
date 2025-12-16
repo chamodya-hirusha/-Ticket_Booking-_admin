@@ -34,6 +34,11 @@ interface DataTableProps<T> {
   onSearch?: (query: string) => void;
   isLoading?: boolean;
   emptyMessage?: string;
+  /**
+   * Optional custom renderer for mobile card view.
+   * If not provided, a default card layout using columns will be used.
+   */
+  renderMobileCard?: (item: T) => React.ReactNode;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -44,6 +49,7 @@ export function DataTable<T extends Record<string, any>>({
   onSearch,
   isLoading = false,
   emptyMessage = 'No data available',
+  renderMobileCard,
 }: DataTableProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
@@ -99,8 +105,47 @@ export function DataTable<T extends Record<string, any>>({
         </div>
       )}
 
-      {/* Table */}
-      <div className="border rounded-lg">
+      {/* Mobile Card View */}
+      <div className="space-y-3 md:hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="flex items-center justify-center gap-2">
+              <div className="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span className="text-muted-foreground">Loading...</span>
+            </div>
+          </div>
+        ) : paginatedData.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground border rounded-lg">
+            {emptyMessage}
+          </div>
+        ) : (
+          paginatedData.map((item, index) => (
+            <div
+              key={index}
+              className="bg-card border rounded-lg p-4 shadow-sm space-y-2"
+            >
+              {renderMobileCard
+                ? renderMobileCard(item)
+                : columns.map((column) => (
+                    <div
+                      key={column.key}
+                      className="flex items-start justify-between gap-4 text-sm"
+                    >
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        {column.label}
+                      </span>
+                      <div className="flex-1 text-right text-foreground">
+                        {column.render ? column.render(item) : item[column.key]}
+                      </div>
+                    </div>
+                  ))}
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop Table */}
+      <div className="border rounded-lg hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -157,12 +202,12 @@ export function DataTable<T extends Record<string, any>>({
 
       {/* Pagination */}
       {!isLoading && paginatedData.length > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
             Showing {startIndex + 1} to {Math.min(endIndex, sortedData.length)} of {sortedData.length} results
           </p>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center sm:justify-end gap-1 sm:gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -179,11 +224,11 @@ export function DataTable<T extends Record<string, any>>({
             >
               <ChevronLeft className="size-4" />
             </Button>
-            
-            <span className="text-sm px-4">
+
+            <span className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">
               Page {currentPage} of {totalPages}
             </span>
-            
+
             <Button
               variant="outline"
               size="sm"

@@ -238,6 +238,24 @@ class PaymentServiceAPI {
       { method: 'GET' }
     );
   }
+
+  /**
+   * Get All Payments (Admin Only)
+   * GET /api/v1/payment/all
+   * Authorization: Requires ADMIN role
+   */
+  async getAllPayments(params?: PaymentHistoryQueryParams): Promise<ResponseDTO<PageResponse<PaymentDTO>>> {
+    const queryParams: PaymentHistoryQueryParams = {
+      page: params?.page ?? 0,
+      size: params?.size ?? 20,
+      sortBy: params?.sortBy ?? 'id',
+      direction: params?.direction ?? 'DESC',
+    };
+    return this.request<PageResponse<PaymentDTO>>(
+      `/api/v1/payment/all${this.buildQueryString(queryParams)}`,
+      { method: 'GET' }
+    );
+  }
 }
 
 export const paymentServiceAPI = new PaymentServiceAPI();

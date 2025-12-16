@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Eye, UserCheck, UserX, Ban, Plus } from 'lucide-react';
+import { Eye, UserCheck, UserX, Ban } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { DataTable, Column } from '../../components/admin/DataTable';
 import { StatusBadge } from '../../components/admin/StatusBadge';
-import { userServiceAPI } from '../../services/api/userService';
 import { useAdminUsers } from '../../hooks/useAdminUsers';
 import type { User } from '../../types/admin';
 import {
@@ -25,67 +24,10 @@ import { toast } from 'sonner@2.0.3';
 export function Users() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [newUser, setNewUser] = useState({
-    name: '',
-    email: '',
-    phone: '',
-  });
-  const [formErrors, setFormErrors] = useState<{
-    name?: string;
-    email?: string;
-    phone?: string;
-  }>({});
 
   const { users, isLoading, updateUserStatus, refetch, setFilters } = useAdminUsers({
     status: statusFilter === 'all' ? undefined : statusFilter,
   });
-
-  const validateNewUser = () => {
-    const errors: typeof formErrors = {};
-
-    if (!newUser.name.trim()) {
-      errors.name = 'Name is required';
-    }
-    if (!newUser.email.trim()) {
-      errors.email = 'Email is required';
-    }
-    if (!newUser.phone.trim()) {
-      errors.phone = 'Phone is required';
-    }
-
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleCreateUser = async () => {
-    if (!validateNewUser()) return;
-
-    try {
-      setIsCreating(true);
-      const response = await userServiceAPI.register({
-        name: newUser.name.trim(),
-        email: newUser.email.trim(),
-        phone: newUser.phone.trim(),
-      });
-
-      if (response.success) {
-        toast.success(response.message || 'User created successfully');
-        setIsCreateDialogOpen(false);
-        setNewUser({ name: '', email: '', phone: '' });
-        await refetch();
-      } else {
-        toast.error(response.message || response.error || 'Failed to create user');
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to create user'
-      );
-    } finally {
-      setIsCreating(false);
-    }
-  };
 
   const handleStatusUpdate = async (userId: string, status: User['status']) => {
     try {
@@ -195,10 +137,6 @@ export function Users() {
             Manage all users on your platform
           </p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="size-4 mr-2" />
-          Create User
-        </Button>
       </div>
 
       {/* Filters */}
@@ -235,110 +173,6 @@ export function Users() {
           emptyMessage="No users found"
         />
       </div>
-
-      {/* Create User Dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-lg bg-white">
-          <DialogHeader>
-            <DialogTitle>Create New User</DialogTitle>
-            <DialogDescription>
-              Register a normal user with basic account details.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 pt-2">
-            <div>
-              <label className="text-sm font-medium text-foreground">
-                Name
-              </label>
-              <input
-                type="text"
-                className="mt-2 w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                placeholder="Enter full name"
-                value={newUser.name}
-                onChange={(e) => {
-                  setNewUser({ ...newUser, name: e.target.value });
-                  if (formErrors.name) {
-                    setFormErrors((prev) => ({ ...prev, name: undefined }));
-                  }
-                }}
-              />
-              {formErrors.name && (
-                <p className="mt-1 text-xs text-destructive">
-                  {formErrors.name}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-foreground">
-                Email
-              </label>
-              <input
-                type="email"
-                className="mt-2 w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                placeholder="user@example.com"
-                value={newUser.email}
-                onChange={(e) => {
-                  setNewUser({ ...newUser, email: e.target.value });
-                  if (formErrors.email) {
-                    setFormErrors((prev) => ({ ...prev, email: undefined }));
-                  }
-                }}
-              />
-              {formErrors.email && (
-                <p className="mt-1 text-xs text-destructive">
-                  {formErrors.email}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-foreground">
-                Phone
-              </label>
-              <input
-                type="tel"
-                className="mt-2 w-full rounded-md border bg-white px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                placeholder="+1 234 567 890"
-                value={newUser.phone}
-                onChange={(e) => {
-                  setNewUser({ ...newUser, phone: e.target.value });
-                  if (formErrors.phone) {
-                    setFormErrors((prev) => ({ ...prev, phone: undefined }));
-                  }
-                }}
-              />
-              {formErrors.phone && (
-                <p className="mt-1 text-xs text-destructive">
-                  {formErrors.phone}
-                </p>
-              )}
-            </div>
-
-          </div>
-
-          <div className="mt-6 flex items-center justify-end gap-3 border-t pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsCreateDialogOpen(false);
-              }}
-              disabled={isCreating}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleCreateUser}
-              disabled={isCreating}
-            >
-              {isCreating ? 'Creating...' : 'Create User'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* User Details Dialog */}
       <Dialog open={!!selectedUser} onOpenChange={() => setSelectedUser(null)}>

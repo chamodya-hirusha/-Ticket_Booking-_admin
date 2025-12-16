@@ -31,7 +31,7 @@ const navItems = [
 export function AdminSidebar({ currentPage, onNavigate, isCollapsed, onToggleCollapse }: AdminSidebarProps) {
   return (
     <aside className={cn(
-      "flex flex-col border-r bg-card transition-all duration-300",
+      "flex flex-col border-r bg-white transition-all duration-300",
       isCollapsed ? "w-16" : "w-64"
     )}>
       {/* Header */}
@@ -70,7 +70,7 @@ export function AdminSidebar({ currentPage, onNavigate, isCollapsed, onToggleCol
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
                 isActive 
-                  ? "bg-primary text-primary-foreground" 
+                  ? "bg-blue-500 text-white font-medium" 
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               )}
               title={isCollapsed ? item.label : undefined}

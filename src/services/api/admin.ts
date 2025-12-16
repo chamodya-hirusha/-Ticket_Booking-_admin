@@ -630,7 +630,8 @@ export const adminApi = {
       };
 
       console.log('Fetching payments with filters:', filters);
-      const response = await paymentServiceAPI.getPaymentHistory(query);
+      // Use admin-specific endpoint instead of user payment history endpoint
+      const response = await paymentServiceAPI.getAllPayments(query);
       console.log('Payments API response:', response);
 
       // Handle API response structure - check both response.data and response.content
